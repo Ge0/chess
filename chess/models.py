@@ -20,7 +20,6 @@ class Model:
         # These ones are public.
         self.players_table = self._db.table("players")
         self.tournaments_table = self._db.table("tournaments")
-        breakpoint()
 
     def delete_tournament(self, tournament):
         """Delete a tournament."""

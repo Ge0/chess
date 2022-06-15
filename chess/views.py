@@ -74,7 +74,7 @@ class View:
             self._tournament_console()
         input()
 
-    def show_players(players):
+    def show_players(self, players):
         dash = "-" * 30
         space = "\n" * 3
         print(space, dash)
