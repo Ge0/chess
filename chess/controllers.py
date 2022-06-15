@@ -28,6 +28,7 @@ class Application:
         self._load_players()
         self._load_tournaments()
 
+    @property
     def model(self):
         return self._model
 
@@ -153,13 +154,14 @@ class Application:
             date,
             cadence,
             description,
-            rondes_instances=[],
-            round=nb_round,
+            players=self._players,
+            rounds=[],
+            round_count=nb_round,
         )
         self._tournament_processor = TournamentProcessor(
             controller=self, tournament=tournament
         )
-        self._tournament_processor.process(self._players)
+        self._tournament_processor.process()
 
     def _show_players(self):
         self._view.show_players(self._players)
@@ -238,11 +240,11 @@ class Application:
         self.reload_tournaments()
         for tournament in self._tournaments:
             finish = True
-            for round in tournament.rondes_instances:
-                if len(round.results) != len(tournament.players):
+            for round_ in tournament.rounds:
+                if len(round_.results) != len(tournament.players):
                     finish = False
             if (
-                len(tournament.rondes_instances) != tournament.round
+                len(tournament.rounds) != tournament.round_count
                 or not finish
             ):
                 names.append(tournament.name)
@@ -254,13 +256,13 @@ class Application:
         try:
             dash = 50 * "-"
             tournament_to_resume = selected_tournaments[selection]
-            for round_ in tournament_to_resume.rondes_instances:
+            for round_ in tournament_to_resume.rounds:
                 for result in round_.results:
                     [name, score] = result
                     for player in tournament_to_resume.players:
                         if player.name == name:
                             player.score += score
-            for round_ in tournament_to_resume.rondes_instances:
+            for round_ in tournament_to_resume.rounds:
                 if len(round_.results) != len(
                     tournament_to_resume.players
                 ) or (
@@ -286,9 +288,9 @@ class Application:
                         tournament_to_resume.turn += 1
                         tournament_to_resume.process(self._players)
                 elif (
-                    len(tournament_to_resume.rondes_instances)
-                    != tournament_to_resume.round
-                    and round_ == tournament_to_resume.rondes_instances[-1]
+                    len(tournament_to_resume.rounds)
+                    != tournament_to_resume.round_count
+                    and round_ == tournament_to_resume.rounds[-1]
                 ):
                     if len(round_.results) < len(tournament_to_resume.players):
                         round_.end()
@@ -342,10 +344,10 @@ class Application:
             place = serial["place"]
             date = serial["date"]
             cadence = serial["cadence"]
-            round_ = serial["round"]
-            rondes_instances = serial["rondes_instances"]
+            round_count = serial["round_count"]
+            rounds = serial["rounds"]
             round_no_ser = []
-            for ronde in rondes_instances:
+            for ronde in rounds:
                 match_no_ser = []
                 round_name = ronde["round_name"]
                 results = ronde["results"]
@@ -383,7 +385,7 @@ class Application:
                     date,
                     cadence,
                     description,
-                    round_,
+                    round_count,
                     round_no_ser,
                     players_no_ser,
                     turn,
@@ -391,9 +393,6 @@ class Application:
                 )
             )
 
-    def _save_current_tournament(self):
-        """Save the current tournament."""
-        serialized_tournament = (
-            self._tournament_processor.get_serialized_tournament()
-        )
+    def _save_current_tournament(self, serialized_tournament):
+        """Save *serialized_tournament*."""
         self._model.tournaments_table.insert(serialized_tournament)

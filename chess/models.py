@@ -38,7 +38,7 @@ class Tournament:
     -date : Date
     -cadence : "Blitz" par exemple
     -round : Nombre de rondes
-    -rondes_instances : Liste des instances de rondes
+    -rounds : Liste des instances de rondes
     -players : Liste des joueurs qui participent
     -description : Description du tournois
     -turn : Ronde actuelle
@@ -53,8 +53,8 @@ class Tournament:
         date,
         cadence,
         description,
-        round=5,
-        rondes_instances=None,
+        round_count=5,
+        rounds=None,
         players=None,
         turn=1,
         opponents=None,
@@ -64,14 +64,12 @@ class Tournament:
         self.place = place
         self.date = date
         self.cadence = cadence
-        self.round = round
-        self.rondes_instances = rondes_instances
+        self.round_count = round_count
         self.players = players or []
-        self.rondes_instances = rondes_instances or []
+        self.rounds = rounds or []
         self.opponents = opponents or []
         self.description = description
         self.turn = turn
-        self.opponents = opponents
 
 
 class Round:
@@ -84,12 +82,15 @@ class Round:
     -round_name : Nom de la ronde
     """
 
-    def __init__(self, round_name, results=[], match_list=[]):
-        self.match_list = match_list
+    def __init__(self, round_name, results=None, match_list=None):
+        self.match_list = match_list or []
         self.time_start = time.strftime("%H:%M")
         self.time_end = None
-        self.results = results
+        self.results = results or []
         self.round_name = round_name
+
+    def start(self):
+        print('Heure de début de ronde : {}'.format(self.time_start))
 
     def end(self):
         """Demande le résultat de tout les matchs de la ronde actuelle"""

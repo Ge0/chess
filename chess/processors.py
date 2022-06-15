@@ -36,6 +36,7 @@ class TournamentProcessor:
                 name = str(input("Nom de la Ronde 1 : "))
                 if name != "exit":
                     round0 = Round(round_name=name, match_list=[], results=[])
+                    round0.start()
                     break
                 else:
                     print("Vous ne pouvez pas sortir d'un tournois non créer")
@@ -60,21 +61,24 @@ class TournamentProcessor:
                     [first_part[i].name, second_part[i].name]
                 )
                 print(dash)
-                self.display_opponents(first_part, second_part)
+                self.display_opponents(first_part[i], second_part[i])
 
                 # On ajoute les matchs a la ronde 1
                 round0.match_list.append(match)
 
             # On ajoute la ronde au tournois
-            self._tournament.rondes_instances.append(round0)
+            self._tournament.rounds.append(round0)
             print(dash)
 
         else:
             # Si ce n'est pas la première ronde,
             # on trie et on apparie
-            name = str(input("Nom de la {}ème ronde : ".format(self.turn)))
+            name = str(input("Nom de la {}ème ronde : ".format(
+                self._tournament.turn
+            )))
             if name != "exit":
                 roundx = Round(round_name=name, match_list=[], results=[])
+                roundx.start()
             else:
                 self.controller.del_tournament(self._tournament)
                 self.save_tournament()
@@ -90,34 +94,33 @@ class TournamentProcessor:
             next_ = 1
             pb = 1
             opp = []
+            players = self._tournament.players
             while True:
-                while actual < len(self.players) and actual + 1 < len(
-                    self._tournament.players
-                ):
+                while actual < len(players) and actual + 1 < len(players):
                     matched = False
-                    while matched is False and (next_ < len(self.players)):
+                    while matched is False and (next_ < len(players)):
                         if self.conditions_duo(
-                            self._tournament.players[actual],
-                            self.players[next_],
+                            players[actual],
+                            players[next_],
                             roundx,
                         ):
                             matched = True
                             match = Match(
-                                self._tournament.players[actual],
-                                self.players[next_],
+                                players[actual],
+                                players[next_],
                             )
 
                             # On ajoute les matchs a la ronde x
                             roundx.match_list.append(match)
                             # On ajoute les adversaires à la liste
-                            self.opponents.append(
+                            self._tournament.opponents.append(
                                 [
-                                    self.players[actual].name,
-                                    self.players[next_].name,
+                                    players[actual].name,
+                                    players[next_].name,
                                 ]
                             )
                             opp.append(
-                                [self.players[actual], self.players[next_]]
+                                [players[actual], players[next_]]
                             )
                         else:
                             next_ += 1
@@ -132,11 +135,11 @@ class TournamentProcessor:
                 # Résoud le bug 1-2/3-4/5-6/7x8
                 # Annule les infos du round et recommence
                 # différement
-                if len(roundx.match_list) != (len(self.players) / 2):
+                if len(roundx.match_list) != (len(players) / 2):
                     roundx.match_list = []
                     for couple in opp:
                         [c1, c2] = couple
-                        self.opponents.remove([c1.name, c2.name])
+                        self._tournament.opponents.remove([c1.name, c2.name])
                     opp = []
                     next_ = pb + 1
                     pb += 1
@@ -150,7 +153,7 @@ class TournamentProcessor:
                 break
 
             # On ajoute la ronde au tournois
-            self.rondes_instances.append(roundx)
+            self._tournament.rounds.append(roundx)
 
     def display_opponents(self, player1, player2):
         print(
@@ -168,7 +171,7 @@ class TournamentProcessor:
 
         Utilise la liste des joueurs et celle des instances de rondes"""
 
-        dash = "-" * (11 * (len(self.rondes_instances) + 1) + 15)
+        dash = "-" * (11 * (len(self._tournament.rounds) + 1) + 15)
 
         self._tournament.players = sorted(
             self._tournament.players,
@@ -178,16 +181,16 @@ class TournamentProcessor:
 
         # Première ligne, on affiche l'en-tête : le nom de(s) ronde(s) et Total
         print("{:>10s}".format(" "), end=" |")
-        for round in self.rondes_instances:
-            print("{:^11s}".format(round.round_name), end="|")
+        for round_ in self._tournament.rounds:
+            print("{:^11s}".format(round_.round_name), end="|")
         print("{:^11s}".format("Total"), end="|")
         print("\n", dash)
 
         # On affiche le résultat de chaque joueur dans chaque ronde
-        for player in self.players:
+        for player in self._tournament.players:
             round_index = 0
-            for round in self.rondes_instances:
-                for name_score in round.results:
+            for round_ in self._tournament.rounds:
+                for name_score in round_.results:
                     if player.name == name_score[0] and round_index == 0:
                         print(
                             "{:<10s}{:>3s}{:^9s}".format(
@@ -204,23 +207,24 @@ class TournamentProcessor:
             print("{:^9s}".format(str(player.score)), end=" | ")
             print("\n", dash)
 
-    def process(self, players):
-        self.start_tournament(players)
-        self.end_tournament()
+    def process(self):
+        self._start_tournament()
+        self._end_tournament()
 
-    def start_tournament(self, players):
+    def _start_tournament(self):
         """Démarre le tournois et apparie"""
+        players = self._tournament.players
         while (
-            self._tournament.turn != self._tournament.round + 1
+            self._tournament.turn != self._tournament.round_count + 1
             and self._tournament.turn != len(players)
         ):
             if self._tournament.turn == 1:
                 self.switzerland()
-                exit_yorn = self._tournament.rondes_instances[0].end()
+                exit_yorn = self._tournament.rounds[0].end()
             else:
                 self.switzerland()
-                exit_yorn = self._tournament.rondes_instances[
-                    self.turn - 1
+                exit_yorn = self._tournament.rounds[
+                    self._tournament.turn - 1
                 ].end()
             if exit_yorn == "exit":
                 self._controller.del_tournament(self._tournament)
@@ -230,21 +234,18 @@ class TournamentProcessor:
                 # Nombre d'appariements max pour un nombre de personne
                 # Pour 4 : (4*3)/2 = 6 couples possibles
             if (
-                len(self.opponents)
-                == (len(self.players) * (len(self.players) - 1)) / 2
+                len(self._tournament.opponents)
+                == (len(players) * (len(players) - 1)) / 2
             ):
-                self.end_tournament()
                 break
 
-            self.turn += 1
+            self._tournament.turn += 1
             # On affiche le tableau des scores
             self.rounds_score()
-        self.end_tournament()
 
-    def end_tournament(self):
+    def _end_tournament(self):
         """Messages et affichage de fin de tournois"""
-
-        self._tournament.players = sorted(
+        players = sorted(
             self._tournament.players,
             key=attrgetter("score", "ranking"),
             reverse=True,
@@ -253,33 +254,36 @@ class TournamentProcessor:
         self.rounds_score()
         i = 0
         if (
-            self._tournament.players[i].score
-            == self._tournament.players[i + 1].score
+            players[i].score
+            == players[i + 1].score
         ):
-            while (i + 1 != len(self._tournament.players)) and (
-                self._tournament.players[i].score == self.players[i + 1].score
+            while (i + 1 != len(players)) and (
+                players[i].score
+                == players[i + 1].score
             ):
                 if i == 0:
                     print(
                         "Félicitations aux gagnants {}, {}".format(
-                            self.players[i].name, self.players[i + 1].name
+                            players[i].name,
+                            players[i + 1].name
                         ),
                         end="",
                     )
                     i += 1
                 else:
-                    print(", " + self.players[i + 1].name, end="")
+                    print(", " + players[i + 1].name, end="")
                     i += 1
         else:
             print(
                 "Félicitations au gagnant : {} {}".format(
-                    self.players[0].name, self.players[0].surname
+                    players[0].name,
+                    players[0].surname
                 )
             )
         input()
         self._controller.del_tournament(self._tournament)
         self.save_tournament()
-        for player in self._tournament.players:
+        for player in players:
             player.score = 0
         # console_menu()
 
@@ -288,17 +292,17 @@ class TournamentProcessor:
         rounds_ser = []
         players_ser = []
         match_ser = []
-        for ronde in self._tournament.rondes_instances:
+        for round_ in self._tournament.rounds:
             match_ser = []
-            for match in ronde.match_list:
+            for match in round_.match_list:
                 serialized_match = {
                     "player1": match.player1.name,
                     "player2": match.player2.name,
                 }
                 match_ser.append(serialized_match)
             serialized_round = {
-                "round_name": ronde.round_name,
-                "results": ronde.results,
+                "round_name": round_.round_name,
+                "results": round_.results,
                 "match_list": match_ser,
             }
             rounds_ser.append(serialized_round)
@@ -318,13 +322,18 @@ class TournamentProcessor:
             "place": self._tournament.place,
             "date": self._tournament.date,
             "cadence": self._tournament.cadence,
-            "round": self._tournament.round,
-            "rondes_instances": rounds_ser,
+            "round_count": self._tournament.round_count,
+            "rounds": rounds_ser,
             "players": players_ser,
             "description": self._tournament.description,
             "turn": self._tournament.turn,
             "opponents": self._tournament.opponents,
         }
+
+    def save_tournament(self):
+        self._controller._save_current_tournament(
+            self.get_serialized_tournament()
+        )
 
 
 class RoundProcessor:

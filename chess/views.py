@@ -51,17 +51,17 @@ class View:
                 print("{:^10}{:^10}".format(player.name, player.ranking))
                 print(dash)
         elif selection == 2:
-            for round in tournament.rondes_instances:
-                print(round.round_name)
+            for round_ in tournament.rounds:
+                print(round_.round_name)
                 print(dash)
-                for result in round.results:
+                for result in round_.results:
                     print("{:^10}{:^10}".format(result[0], result[1]))
                 print(dash)
         elif selection == 3:
-            for round in tournament.rondes_instances:
-                print(round.round_name)
+            for round_ in tournament.rounds:
+                print(round_.round_name)
                 print(dash)
-                for match in round.match_list:
+                for match in round_.match_list:
                     print(
                         "{} s'opposait à {}".format(
                             match.player1.name, match.player2.name
