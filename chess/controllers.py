@@ -1,20 +1,35 @@
-from . import Player, Tournament, Match, Round
+from .models import Model, Player, Tournament, Match, Round
+from .processors import TournamentProcessor
+from .views import View
 
 from consolemenu.console_menu import ConsoleMenu
 from consolemenu.items import FunctionItem
 from consolemenu.selection_menu import SelectionMenu
 
-from tinydb import TinyDB, where
-
 
 class Application:
-    def __init__(self):
+    """Our only one controller for the app.
+
+    The *Application* will hold references to both the model and the view.
+    Internally, they will be defined through the *self._model* and
+    *self._view*. They are hidden outside the scope of the *Application* class.
+
+    """
+
+    def __init__(self, database_path):
         self._players = []
         self._tournaments = []
-        self._db = TinyDB("db.json")
+
+        self._model = Model(database_path)
+        self._view = View(self)
+        self._tournament_processor = None
+        self._round_processor = None
 
         self._load_players()
         self._load_tournaments()
+
+    def model(self):
+        return self._model
 
     def run(self):
         self._display_console_menu()
@@ -23,9 +38,8 @@ class Application:
         '''Sauvegarde les joueurs de la liste "players"'''
 
         # global players
-        players_table = self._db.table("players")
-        players_table.truncate()
-        for player in players:
+        self._model.players_table.truncate()
+        for player in self._players:
             serialized_player = {
                 "name": player.name,
                 "surname": player.surname,
@@ -34,7 +48,7 @@ class Application:
                 "ranking": player.ranking,
                 "score": player.score,
             }
-            players_table.insert(serialized_player)
+            self._model.players_table.insert(serialized_player)
 
     def _add_player(self):
         """Créer un joueur"""
@@ -108,13 +122,14 @@ class Application:
         print("Vous pouvez quitter à tout moment en tappant exit \n")
         while True:
             try:
+                possible_rounds_count = len(self._players) - 1
                 nb_round = int(
                     input(
                         "Combien de rondes voulez-vous ?"
-                        " {} rondes possibles \n".format(str(len(players) - 1))
+                        " {} rondes possibles \n".format(possible_rounds_count)
                     )
                 )
-                if nb_round > len(players) - 1 or nb_round < 0:
+                if nb_round > len(self._players) - 1 or nb_round < 0:
                     raise ValueError
                 name = str(input("Nom du tournois\n"))
                 if name == "":
@@ -132,7 +147,7 @@ class Application:
                 break
             except ValueError:
                 print("Réponse non valide")
-        tournois = Tournament(
+        tournament = Tournament(
             name,
             place,
             date,
@@ -141,16 +156,13 @@ class Application:
             rondes_instances=[],
             round=nb_round,
         )
-        tournois.start_tournament()
+        self._tournament_processor = TournamentProcessor(
+            controller=self, tournament=tournament
+        )
+        self._tournament_processor.process(self._players)
 
     def _show_players(self):
-        dash = "-" * 30
-        space = "\n" * 3
-        print(space, dash)
-        for player in self._players:
-            print("{:^10}{:^10}".format(player.name, player.surname))
-            print(dash)
-        input("Appuyez sur entrée pour revenir au menu principal")
+        self._view.show_players(self._players)
 
     def _del_player(self):
         """Supprime un joueur si il n'est pas lié
@@ -158,8 +170,6 @@ class Application:
 
         can_delete = True
         while True:
-            db = TinyDB("db.json")
-            players_table = db.table("players")
             names = []
             for player in self._players:
                 names.append(player.name)
@@ -186,24 +196,111 @@ class Application:
                             input()
                             can_delete = False
                 if can_delete:
-                    players_table.remove(where("name") == names[selection])
+                    self._model.delete_player(self._players[selection])
                     self._players.pop(selection)
                 else:
                     continue
             break
 
     def _tournament_console(self):
-        pass
+        self.reload_tournaments()
+        tournaments_menu = ConsoleMenu("Tournois")
+        for tournament in self._tournaments:
+            name = tournament.name
+            item = FunctionItem(name, self._view.show_data, args=[tournament])
+            tournaments_menu.append_item(item)
+        tournaments_menu.append_item(
+            FunctionItem(
+                "Supprimer un tournois",
+                self._remove_tournament,
+                should_exit=True,
+            )
+        )
+        tournaments_menu.show()
+
+    def _remove_tournament(self):
+        """Supprime un tournoi de la base de donnée avec
+        un affichage console"""
+        names = []
+        for tournament in self._tournaments:
+            names.append(tournament.name)
+        menu = SelectionMenu(names, "Quel tournoi supprimer ?")
+        menu.show()
+        selection = menu.selected_option
+
+        self._model.delete_tournament(self._tournaments[selection])
+        self._tournaments.delete(self._tournaments[selection])
+        self._tournament_console()
 
     def _resume_tournament(self):
-        pass
+        names = []
+        selected_tournaments = []
+        self.reload_tournaments()
+        for tournament in self._tournaments:
+            finish = True
+            for round in tournament.rondes_instances:
+                if len(round.results) != len(tournament.players):
+                    finish = False
+            if (
+                len(tournament.rondes_instances) != tournament.round
+                or not finish
+            ):
+                names.append(tournament.name)
+                selected_tournaments.append(tournament)
+        menu = SelectionMenu(names, "Quel tournoi continuer ?")
+        menu.should_exit = True
+        menu.show()
+        selection = menu.selected_option
+        try:
+            dash = 50 * "-"
+            tournament_to_resume = selected_tournaments[selection]
+            for round_ in tournament_to_resume.rondes_instances:
+                for result in round_.results:
+                    [name, score] = result
+                    for player in tournament_to_resume.players:
+                        if player.name == name:
+                            player.score += score
+            for round_ in tournament_to_resume.rondes_instances:
+                if len(round_.results) != len(
+                    tournament_to_resume.players
+                ) or (
+                    len(round_.results) == 0 and round_.round_name is not None
+                ):
+                    print("Reprise au round : {}".format(round_.round_name))
+                    for match in round_.match_list:
+                        print(dash)
+                        print(
+                            "{:^13}{:^13}{:^13}".format(
+                                match.player1.name,
+                                "s'oppose à",
+                                match.player2.name,
+                            )
+                        )
+                    print(dash, "\n")
+                    exit_yor = round_.end()
+                    self.model.delete_tournament(tournament_to_resume)
+                    self._save_current_tournament()
+                    if exit_yor == "exit":
+                        exit()
+                    else:
+                        tournament_to_resume.turn += 1
+                        tournament_to_resume.process(self._players)
+                elif (
+                    len(tournament_to_resume.rondes_instances)
+                    != tournament_to_resume.round
+                    and round_ == tournament_to_resume.rondes_instances[-1]
+                ):
+                    if len(round_.results) < len(tournament_to_resume.players):
+                        round_.end()
+                    else:
+                        tournament_to_resume.process(self._players)
+        except IndexError:
+            pass
 
     def _load_players(self):
         """Charge tout les joueurs vers la liste "players"
-        depuis la base de donnée"""
-
-        players_table = self._db.table("players")
-        serialized_players = players_table.all()
+        depuis la base de données."""
+        serialized_players = self._model.players_table.all()
         for serial in serialized_players:
             name = serial["name"]
             surname = serial["surname"]
@@ -215,22 +312,37 @@ class Application:
                 Player(name, surname, born, gender, ranking, score)
             )
 
+    def del_tournament(self, tournament):
+        """Supprime un tournois de la base de donnée sans affichage console"""
+
+        # Delete the tournament from the database.
+        self._model.delete_tournament(tournament)
+
+        # Then delete it from the internal list.
+        try:
+            self._tournaments.remove(tournament)
+        except ValueError as e:
+            print(f"Could not remove tournament: {e}")
+
+    def reload_tournaments(self):
+        """Reload the tournaments from the database."""
+        self._tournaments = []
+        self._load_tournaments()
+
     def _load_tournaments(self):
         """Charge les tournois vers la liste tournaments
         depuis la base de donnée"""
-
-        tournaments_table = self._db.table("tournaments")
         players_no_ser = []
         round_no_ser = []
         player1 = None
         player2 = None
         match_no_ser = []
-        serialized_tournaments = tournaments_table.all()
+        serialized_tournaments = self._model.tournaments_table.all()
         for serial in serialized_tournaments:
             place = serial["place"]
             date = serial["date"]
             cadence = serial["cadence"]
-            round = serial["round"]
+            round_ = serial["round"]
             rondes_instances = serial["rondes_instances"]
             round_no_ser = []
             for ronde in rondes_instances:
@@ -271,10 +383,17 @@ class Application:
                     date,
                     cadence,
                     description,
-                    round,
+                    round_,
                     round_no_ser,
                     players_no_ser,
                     turn,
                     opponents,
                 )
             )
+
+    def _save_current_tournament(self):
+        """Save the current tournament."""
+        serialized_tournament = (
+            self._tournament_processor.get_serialized_tournament()
+        )
+        self._model.tournaments_table.insert(serialized_tournament)

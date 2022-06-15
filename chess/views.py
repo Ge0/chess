@@ -1,4 +1,7 @@
 from operator import attrgetter
+
+from consolemenu.console_menu import ConsoleMenu
+from consolemenu.items import FunctionItem
 from consolemenu.selection_menu import SelectionMenu
 
 
@@ -71,7 +74,7 @@ class View:
             self._tournament_console()
         input()
 
-    def show_players():
+    def show_players(players):
         dash = "-" * 30
         space = "\n" * 3
         print(space, dash)
@@ -86,7 +89,7 @@ class View:
         tournaments_menu = ConsoleMenu("Tournois")
         for tournament in self._tournaments:
             name = tournament.name
-            item = FunctionItem(name, show_data, args=[tournament])
+            item = FunctionItem(name, self.show_data, args=[tournament])
             tournaments_menu.append_item(item)
         tournaments_menu.append_item(
             FunctionItem(
